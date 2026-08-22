@@ -1,67 +1,50 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { ThemePreference } from '@/types';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import type { ThemePreference } from '@/types';
 
-interface ThemeContextType {
+interface ThemeContextValue {
   theme: ThemePreference;
   toggleTheme: () => void;
   setTheme: (theme: ThemePreference) => void;
 }
 
-const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-export const useTheme = () => {
-  const context = useContext(ThemeContext);
-  if (!context) {
-    throw new Error('useTheme must be used within a ThemeProvider');
-  }
-  return context;
+export const useTheme = (): ThemeContextValue => {
+  const ctx = useContext(ThemeContext);
+  if (!ctx) throw new Error('useTheme must be used inside ThemeProvider');
+  return ctx;
 };
 
-interface ThemeProviderProps {
-  children: React.ReactNode;
-}
+const applyTheme = (theme: ThemePreference) => {
+  const root = document.documentElement;
+  root.classList.toggle('dark', theme === 'dark');
+  root.style.colorScheme = theme;
+};
 
-export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
-  const [theme, setThemeState] = useState<ThemePreference>('light');
-  const [mounted, setMounted] = useState(false);
+export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Dark is the default here — the palette was designed dark-first.
+  const [theme, setThemeState] = useState<ThemePreference>('dark');
 
-  // Set mounted to true after component mounts
   useEffect(() => {
-    setMounted(true);
-    
-    // Check localStorage for saved theme preference
-    const savedTheme = localStorage.getItem('theme') as ThemePreference;
-    if (savedTheme) {
-      setThemeState(savedTheme);
-    } else {
-      // Default to light theme or check system preference
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      setThemeState(prefersDark ? 'dark' : 'light');
-    }
+    const stored = window.localStorage.getItem('theme') as ThemePreference | null;
+    const initial =
+      stored ??
+      (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+    setThemeState(initial);
+    applyTheme(initial);
   }, []);
 
-  // Update document class and localStorage when theme changes
-  useEffect(() => {
-    if (mounted) {
-      const root = document.documentElement;
-      if (theme === 'dark') {
-        root.classList.add('dark');
-      } else {
-        root.classList.remove('dark');
-      }
-      localStorage.setItem('theme', theme);
-    }
-  }, [theme, mounted]);
+  const setTheme = useCallback((next: ThemePreference) => {
+    setThemeState(next);
+    applyTheme(next);
+    window.localStorage.setItem('theme', next);
+  }, []);
 
-  const toggleTheme = () => {
-    setThemeState(prev => prev === 'dark' ? 'light' : 'dark');
-  };
-
-  const setTheme = (newTheme: ThemePreference) => {
-    setThemeState(newTheme);
-  };
+  const toggleTheme = useCallback(() => {
+    setTheme(theme === 'dark' ? 'light' : 'dark');
+  }, [theme, setTheme]);
 
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme, setTheme }}>

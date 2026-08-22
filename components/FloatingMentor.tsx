@@ -1,39 +1,68 @@
 'use client';
 
 import React, { useState } from 'react';
-import AIMentorChat from './AIMentorChat';
+import { Bot, Maximize2, X } from 'lucide-react';
+import Link from 'next/link';
+import { AIMentorChat } from '@/components/AIMentorChat';
+import { IconButton } from '@/components/ui/Button';
+import { cn } from '@/lib/utils';
 
-export default function FloatingMentor() {
-  const [isOpen, setIsOpen] = useState(false);
+export const FloatingMentor: React.FC = () => {
+  const [open, setOpen] = useState(false);
 
   return (
     <>
-      {/* Floating Button */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-gradient-to-r from-sky-400 via-blue-400 to-violet-400 text-white rounded-full shadow-lg hover:shadow-xl transition-all hover:scale-110 flex items-center justify-center text-2xl"
-        title="AI Mentor"
-      >
-        🤖
-      </button>
-
-      {/* Chat Box */}
-      {isOpen && (
-        <div className="fixed bottom-24 right-6 z-50 w-80 md:w-96 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border-2 border-sky-300 dark:border-sky-700">
-          <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-            <h3 className="font-bold text-gray-900 dark:text-white">AI Mentor</h3>
-            <button
-              onClick={() => setIsOpen(false)}
-              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-            >
-              ✕
-            </button>
-          </div>
-          <div className="h-96 overflow-hidden">
-            <AIMentorChat />
-          </div>
+      {open && (
+        <div className="glass-strong fixed bottom-[76px] right-4 z-[70] flex h-[520px] max-h-[calc(100vh-120px)] w-[calc(100vw-2rem)] max-w-[380px] animate-scale-in flex-col overflow-hidden rounded-2xl sm:right-6">
+          <header className="flex items-center justify-between gap-2 border-b border-line/40 px-3.5 py-2.5">
+            <div className="flex items-center gap-2">
+              <span className="flex h-6 w-6 items-center justify-center rounded-md bg-accent/12">
+                <Bot className="h-3.5 w-3.5 text-accent" />
+              </span>
+              <div>
+                <p className="text-xs font-semibold leading-tight text-ink">Smartwise AI</p>
+                <p className="text-2xs leading-tight text-faint">Knows your numbers</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-0.5">
+              <Link href="/mentor" onClick={() => setOpen(false)}>
+                <IconButton label="Open full page">
+                  <Maximize2 className="h-3.5 w-3.5" />
+                </IconButton>
+              </Link>
+              <IconButton label="Close" onClick={() => setOpen(false)}>
+                <X className="h-3.5 w-3.5" />
+              </IconButton>
+            </div>
+          </header>
+          <AIMentorChat compact />
         </div>
       )}
+
+      <button
+        onClick={() => setOpen(!open)}
+        aria-label={open ? 'Close AI mentor' : 'Open AI mentor'}
+        className={cn(
+          'fixed bottom-4 right-4 z-[70] flex h-12 items-center gap-2 rounded-full px-5',
+          'transition-all duration-200 active:scale-95 sm:right-6',
+          open
+            ? 'glass text-muted'
+            : 'bg-accent text-white hover:bg-accent-hover'
+        )}
+        style={
+          open
+            ? undefined
+            : {
+                boxShadow:
+                  '0 4px 20px rgb(var(--accent) / 0.45), 0 2px 8px rgb(0 0 0 / 0.15), inset 0 1px 0 rgb(255 255 255 / 0.2)',
+              }
+        }
+      >
+        {open ? <X className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
+        <span className="text-sm font-medium">{open ? 'Close' : 'Ask AI'}</span>
+      </button>
     </>
   );
-}
+};
+
+export default FloatingMentor;

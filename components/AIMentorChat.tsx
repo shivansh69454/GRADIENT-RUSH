@@ -1,198 +1,336 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  ArrowUp,
+  Bot,
+  Mic,
+  Sparkles,
+  Trash2,
+  Volume2,
+  VolumeX,
+  WifiOff,
+} from 'lucide-react';
+import { Button, IconButton } from '@/components/ui/Button';
+import { useApp } from '@/contexts/AppContext';
+import { askMentor } from '@/lib/ai';
+import { getChat, setChat } from '@/lib/storage';
+import { useSpeechRecognition, useSpeechSynthesis } from '@/hooks/useSpeech';
+import type { ChatMessage } from '@/types';
+import { cn, formatCurrency, uid } from '@/lib/utils';
 
-interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: number;
+const SUGGESTIONS = [
+  'Am I overspending this month?',
+  'How do I start a SIP with ₹500?',
+  'What is a good credit score and how do I build one?',
+  'Should I buy something on EMI?',
+  'Where should my first ₹10,000 go?',
+];
+
+/** Renders **bold** and newlines without pulling in a markdown dependency. */
+const RichText: React.FC<{ text: string }> = ({ text }) => (
+  <>
+    {text.split('\n').map((line, lineIndex) => (
+      <React.Fragment key={lineIndex}>
+        {lineIndex > 0 && <br />}
+        {line.split(/(\*\*[^*]+\*\*)/g).map((part, partIndex) =>
+          part.startsWith('**') && part.endsWith('**') ? (
+            <strong key={partIndex} className="font-semibold text-ink">
+              {part.slice(2, -2)}
+            </strong>
+          ) : (
+            <React.Fragment key={partIndex}>{part}</React.Fragment>
+          )
+        )}
+      </React.Fragment>
+    ))}
+  </>
+);
+
+interface AIMentorChatProps {
+  /** Compact mode is used inside the floating popover. */
+  compact?: boolean;
+  className?: string;
+  /** Question handed over from the command palette, asked once on mount. */
+  initialQuestion?: string;
 }
 
-export default function AIMentorChat() {
-  const [messages, setMessages] = useState<Message[]>([]);
+export const AIMentorChat: React.FC<AIMentorChatProps> = ({
+  compact = false,
+  className,
+  initialQuestion,
+}) => {
+  const { aiContext, completeTaskByKey, awardXP, budget, player } = useApp();
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
+  const [thinking, setThinking] = useState(false);
+  const [autoSpeak, setAutoSpeak] = useState(false);
+  const [rewarded, setRewarded] = useState(false);
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  const { speak, stop: stopSpeaking, speaking, supported: ttsSupported } = useSpeechSynthesis();
+  const {
+    supported: sttSupported,
+    listening,
+    interim,
+    start: startListening,
+    stop: stopListening,
+  } = useSpeechRecognition((transcript) => setInput((prev) => `${prev} ${transcript}`.trim()));
+
+  useEffect(() => setMessages(getChat()), []);
 
   useEffect(() => {
-    // Load chat history
-    const savedMessages = localStorage.getItem('finwise_chat_messages');
-    if (savedMessages) {
-      setMessages(JSON.parse(savedMessages));
-    } else {
-      // Welcome message
-      const welcomeMessage: Message = {
-        id: 'welcome',
-        role: 'assistant',
-        content: "👋 Hi! I'm your AI Financial Mentor. I can help you with budgeting, saving tips, investment advice, and financial goals. What would you like to know?",
-        timestamp: Date.now(),
-      };
-      setMessages([welcomeMessage]);
-    }
-  }, []);
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+  }, [messages, thinking]);
 
-  const getAIResponse = (userMessage: string): string => {
-    const lowerMessage = userMessage.toLowerCase();
-    // Expanded rule-based responses including general topics
-    if (lowerMessage.includes('save') || lowerMessage.includes('saving')) {
-      return "💰 Great question about saving! Try the 50/30/20 rule — 50% needs, 30% wants, 20% savings. Start small and be consistent.";
-    }
-
-    if (lowerMessage.includes('budget')) {
-      return "📊 Budgeting is key. Track expenses, set realistic daily limits, and review weekly. Use the Daily Expenses panel to log transactions.";
-    }
-
-    if (lowerMessage.includes('invest') || lowerMessage.includes('stock') || lowerMessage.includes('mutual fund')) {
-      return "📈 Start with low-cost index funds or diversified mutual funds. Match asset allocation to your risk tolerance and time horizon. Consider SIPs for rupee-cost averaging.";
-    }
-
-    if (lowerMessage.includes('how') && lowerMessage.includes('start')) {
-      return "🛫 To get started: set a budget, build an emergency fund (3-6 months), start a SIP in a mutual fund, and learn basic investing concepts. Ask me for a step-by-step plan.";
-    }
-
-    if (lowerMessage.includes('who') || lowerMessage.includes('what') || lowerMessage.includes('why') || lowerMessage.includes('when') || lowerMessage.includes('where')) {
-      return `I can help with that! Here's what I know:\n\n${userMessage}\n\nI'm designed to answer both finance and general questions. Would you like me to elaborate on any specific aspect?`;
-    }
-
-    if (lowerMessage.includes('hello') || lowerMessage.includes('hi')) {
-      return "👋 Hello! I'm your AI Mentor. I can help with finance topics AND general questions. Ask me anything!";
-    }
-
-    if (lowerMessage.includes('thank')) {
-      return "😊 You're welcome! Happy to help with any question - finance or otherwise!";
-    }
-
-    // Fallback - now handles any topic
-    return `I'm here to help with any question! Whether it's about finance, technology, science, or general knowledge - just ask away and I'll do my best to provide a helpful answer.`;
+  const persist = (next: ChatMessage[]) => {
+    setMessages(next);
+    setChat(next.slice(-40));
   };
 
-  const handleSend = () => {
-    if (!input.trim()) return;
+  const send = async (text: string) => {
+    const question = text.trim();
+    if (!question || thinking) return;
 
-    // Add user message
-    const userMessage: Message = {
-      id: `user_${Date.now()}`,
+    const userMessage: ChatMessage = {
+      id: uid('msg'),
       role: 'user',
-      content: input.trim(),
+      content: question,
       timestamp: Date.now(),
     };
-
-    const updatedMessages = [...messages, userMessage];
-    setMessages(updatedMessages);
+    const withUser = [...messages, userMessage];
+    persist(withUser);
     setInput('');
-    setIsTyping(true);
+    setThinking(true);
 
-    // Simulate AI thinking
-    setTimeout(() => {
-      const aiResponse: Message = {
-        id: `ai_${Date.now()}`,
-        role: 'assistant',
-        content: getAIResponse(input),
-        timestamp: Date.now(),
-      };
+    const result = await askMentor(question, messages, aiContext);
 
-      const finalMessages = [...updatedMessages, aiResponse];
-      setMessages(finalMessages);
-      setIsTyping(false);
-      
-      // Save to localStorage
-      localStorage.setItem('finwise_chat_messages', JSON.stringify(finalMessages));
-    }, 1000);
+    const reply: ChatMessage = {
+      id: uid('msg'),
+      role: 'assistant',
+      content: result.text,
+      timestamp: Date.now(),
+      live: result.live,
+    };
+    persist([...withUser, reply]);
+    setThinking(false);
+
+    if (autoSpeak) speak(result.text);
+
+    if (!rewarded) {
+      setRewarded(true);
+      completeTaskByKey('ask-mentor');
+      awardXP(20, 'Asked the mentor a question', { silent: true });
+    }
   };
 
-  const handleClearChat = () => {
-    const welcomeMessage: Message = {
-      id: 'welcome',
-      role: 'assistant',
-      content: "👋 Chat cleared! How can I help you with your finances?",
-      timestamp: Date.now(),
-    };
-    setMessages([welcomeMessage]);
-    localStorage.setItem('finwise_chat_messages', JSON.stringify([welcomeMessage]));
+  // A question arriving via the URL should ask itself, exactly once.
+  const askedInitialRef = useRef(false);
+  useEffect(() => {
+    const question = initialQuestion?.trim();
+    if (!question || askedInitialRef.current) return;
+    askedInitialRef.current = true;
+    void send(question);
+    // `send` closes over live state but is stable enough for this one-shot call.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialQuestion]);
+
+  const clear = () => {
+    persist([]);
+    stopSpeaking();
+  };
+
+  const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      void send(input);
+    }
   };
 
   return (
-    <div className="bg-gradient-to-br from-cyan-50 via-teal-50 to-emerald-50 dark:from-gray-800 dark:via-cyan-900/20 dark:to-teal-900/20 rounded-2xl p-6 shadow-card h-full flex flex-col border-2 border-cyan-200 dark:border-cyan-800">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-r from-cyan-500 to-teal-500 rounded-full flex items-center justify-center shadow-lg">
-            <span className="text-xl">🤖</span>
-          </div>
-          <div>
-            <h3 className="text-lg font-bold bg-gradient-to-r from-cyan-600 to-teal-600 bg-clip-text text-transparent">AI Mentor</h3>
-            <p className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">● Online & Ready</p>
-          </div>
-        </div>
-        <button
-          onClick={handleClearChat}
-          className="text-xs text-cyan-600 dark:text-cyan-400 hover:text-cyan-800 dark:hover:text-cyan-300 font-medium"
-        >
-          🗑️ Clear
-        </button>
-      </div>
-
+    <div className={cn('flex min-h-0 flex-1 flex-col', className)}>
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar mb-4 space-y-4 max-h-96">
-        {messages.map((message) => (
-          <div
-            key={message.id}
-            className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-          >
-            <div
-              className={`max-w-[80%] p-3 rounded-2xl shadow-md ${
-                message.role === 'user'
-                  ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-white'
-                  : 'bg-gradient-to-r from-cyan-500 to-teal-500 text-white'
-              }`}
-            >
-              <p className="text-sm whitespace-pre-line font-medium">{message.content}</p>
-              <p className={`text-xs mt-1 ${
-                message.role === 'user' ? 'text-orange-100' : 'text-cyan-100'
-              }`}>
-                {new Date(message.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-              </p>
+      <div
+        ref={scrollRef}
+        className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 scrollbar-slim"
+      >
+        {messages.length === 0 && !thinking && (
+          <div className="space-y-4">
+            <div className="flex items-start gap-2.5">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-line bg-surface">
+                <Bot className="h-3.5 w-3.5 text-accent" />
+              </span>
+              <div className="min-w-0 space-y-1.5">
+                <p className="text-sm leading-relaxed text-ink">
+                  Hi{player.name ? ` ${player.name}` : ''} — I&apos;m your money coach. I can see
+                  your actual numbers, so ask me anything about them.
+                </p>
+                {player.monthly_allowance > 0 && (
+                  <p className="text-xs leading-relaxed text-muted">
+                    Right now: {formatCurrency(budget.spentThisMonth)} spent this month,{' '}
+                    {formatCurrency(budget.remaining)} left across {budget.daysLeft} days.
+                  </p>
+                )}
+                <p className="text-2xs text-faint">
+                  I only answer money questions — budgeting, saving, investing, loans, credit,
+                  taxes. Anything else and I&apos;ll point you back here.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="eyebrow">Try asking</p>
+              <div className="flex flex-wrap gap-1.5">
+                {SUGGESTIONS.slice(0, compact ? 3 : 5).map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    onClick={() => void send(suggestion)}
+                    className="chip text-left transition-colors hover:border-accent/40 hover:text-accent"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-        ))}
-        
-        {isTyping && (
-          <div className="flex justify-start">
-            <div className="bg-gradient-to-r from-cyan-400 to-teal-400 p-3 rounded-2xl shadow-md">
-              <div className="flex gap-1">
-                <div className="w-2 h-2 bg-white rounded-full animate-bounce"></div>
-                <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+        )}
+
+        {messages.map((message) =>
+          message.role === 'user' ? (
+            <div key={message.id} className="flex justify-end">
+              <div className="max-w-[85%] rounded-xl rounded-br-sm bg-accent px-3 py-2 text-sm leading-relaxed text-white">
+                {message.content}
               </div>
+            </div>
+          ) : (
+            <div key={message.id} className="flex items-start gap-2.5">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-line bg-surface">
+                <Bot className="h-3.5 w-3.5 text-accent" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="mb-1 flex items-center gap-1.5">
+                  <span className="text-2xs font-medium text-muted">Smartwise AI</span>
+                  {message.live ? (
+                    <span className="chip chip-accent">
+                      <Sparkles className="h-2.5 w-2.5" />
+                      Gemini
+                    </span>
+                  ) : (
+                    <span className="chip" title="No API key configured — using the built-in coach">
+                      <WifiOff className="h-2.5 w-2.5" />
+                      Offline
+                    </span>
+                  )}
+                  {ttsSupported && (
+                    <IconButton
+                      label="Read aloud"
+                      onClick={() => (speaking ? stopSpeaking() : speak(message.content))}
+                      className="h-5 w-5"
+                    >
+                      {speaking ? (
+                        <VolumeX className="h-3 w-3" />
+                      ) : (
+                        <Volume2 className="h-3 w-3" />
+                      )}
+                    </IconButton>
+                  )}
+                </div>
+                <div className="text-sm leading-relaxed text-muted">
+                  <RichText text={message.content} />
+                </div>
+              </div>
+            </div>
+          )
+        )}
+
+        {thinking && (
+          <div className="flex items-start gap-2.5">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-line bg-surface">
+              <Bot className="h-3.5 w-3.5 text-accent" />
+            </span>
+            <div className="flex items-center gap-1.5 pt-1.5">
+              {[0, 150, 300].map((delay) => (
+                <span
+                  key={delay}
+                  className="h-1.5 w-1.5 animate-breathe rounded-full bg-muted"
+                  style={{ animationDelay: `${delay}ms` }}
+                />
+              ))}
+              <span className="ml-1 text-2xs text-faint">Reading your data…</span>
             </div>
           </div>
         )}
       </div>
 
-      {/* Input */}
-      <div className="flex gap-2">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-          placeholder="Ask me anything about finance..."
-          className="flex-1 px-4 py-3 bg-white dark:bg-gray-700 border-2 border-cyan-300 dark:border-cyan-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
-          disabled={isTyping}
-        />
-        <button
-          onClick={handleSend}
-          disabled={isTyping || !input.trim()}
-          className="px-6 py-3 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-xl font-semibold hover:from-cyan-700 hover:to-teal-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
-        >
-          Send
-        </button>
-      </div>
+      {/* Composer */}
+      <div className="border-t border-line bg-surface p-3">
+        <div className="relative">
+          <textarea
+            ref={inputRef}
+            value={listening && interim ? `${input} ${interim}`.trim() : input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={onKeyDown}
+            rows={compact ? 2 : 2}
+            placeholder={listening ? 'Listening…' : 'Ask about your money…'}
+            className="field w-full resize-none pr-[76px] leading-relaxed"
+          />
+          <div className="absolute bottom-2 right-2 flex items-center gap-1">
+            {sttSupported && (
+              <IconButton
+                label={listening ? 'Stop dictation' : 'Dictate'}
+                onClick={listening ? stopListening : startListening}
+                className={listening ? 'text-negative' : undefined}
+              >
+                <Mic className="h-3.5 w-3.5" />
+              </IconButton>
+            )}
+            <button
+              onClick={() => void send(input)}
+              disabled={!input.trim() || thinking}
+              aria-label="Send"
+              className="flex h-7 w-7 items-center justify-center rounded-md bg-accent text-white transition-all hover:bg-accent-hover disabled:opacity-35"
+            >
+              <ArrowUp className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
 
-      <div className="mt-3 p-2 bg-gradient-to-r from-cyan-100 to-teal-100 dark:from-cyan-900/30 dark:to-teal-900/30 rounded-lg border border-cyan-300 dark:border-cyan-700">
-        <p className="text-xs text-cyan-800 dark:text-cyan-300 font-medium">
-          💡 Try asking: "How to save money?", "Investment tips", "Budget help"
-        </p>
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1">
+            {ttsSupported && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setAutoSpeak(!autoSpeak);
+                  if (autoSpeak) stopSpeaking();
+                }}
+                icon={
+                  autoSpeak ? <Volume2 className="h-3 w-3" /> : <VolumeX className="h-3 w-3" />
+                }
+                className={autoSpeak ? 'text-accent' : undefined}
+              >
+                {autoSpeak ? 'Voice on' : 'Voice off'}
+              </Button>
+            )}
+            {messages.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clear}
+                icon={<Trash2 className="h-3 w-3" />}
+              >
+                Clear
+              </Button>
+            )}
+          </div>
+          <p className="text-2xs text-faint">Enter to send · Shift+Enter for a new line</p>
+        </div>
       </div>
     </div>
   );
-}
+};
+
+export default AIMentorChat;

@@ -2,270 +2,248 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Player } from '@/types';
+import { ArrowLeft, ArrowRight, Check, Sparkles } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
+import { Input, MoneyInput } from '@/components/ui/Field';
+import { ThemeToggle } from '@/components/ThemeToggle';
+import { useApp } from '@/contexts/AppContext';
+import { cn, formatCurrency, getTodayDate, uid } from '@/lib/utils';
+
+const ALLOWANCE_PRESETS = [3000, 5000, 10000, 15000, 25000, 40000];
+
+const STEPS = [
+  { key: 'name', title: 'What should we call you?', hint: 'Your coach will use this.' },
+  { key: 'age', title: 'How old are you?', hint: 'It changes the advice you get.' },
+  {
+    key: 'allowance',
+    title: 'What do you get each month?',
+    hint: 'Allowance, stipend, or salary — whatever lands in your account.',
+  },
+] as const;
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const [step, setStep] = useState(1);
-  const [formData, setFormData] = useState({
-    name: '',
-    age: '',
-    monthly_allowance: '',
-  });
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const { updatePlayer } = useApp();
 
-  const validateStep = () => {
-    const newErrors: Record<string, string> = {};
+  const [step, setStep] = useState(0);
+  const [name, setName] = useState('');
+  const [age, setAge] = useState('');
+  const [allowance, setAllowance] = useState('');
 
-    if (step === 1) {
-      if (!formData.name.trim()) {
-        newErrors.name = 'Please enter your name';
-      } else if (formData.name.trim().length < 2) {
-        newErrors.name = 'Name must be at least 2 characters';
-      }
-    }
+  const values = [name.trim(), age, allowance];
+  const canAdvance =
+    step === 0
+      ? name.trim().length >= 2
+      : step === 1
+        ? Number(age) >= 10 && Number(age) <= 100
+        : Number(allowance) > 0;
 
-    if (step === 2) {
-      const age = parseInt(formData.age);
-      if (!formData.age) {
-        newErrors.age = 'Please enter your age';
-      } else if (isNaN(age) || age < 13 || age > 100) {
-        newErrors.age = 'Age must be between 13 and 100';
-      }
-    }
-
-    if (step === 3) {
-      const allowance = parseInt(formData.monthly_allowance);
-      if (!formData.monthly_allowance) {
-        newErrors.monthly_allowance = 'Please enter your monthly allowance';
-      } else if (isNaN(allowance) || allowance < 1000) {
-        newErrors.monthly_allowance = 'Monthly allowance must be at least ₹1,000';
-      }
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleNext = () => {
-    if (validateStep()) {
-      if (step < 3) {
-        setStep(step + 1);
-      } else {
-        handleSubmit();
-      }
-    }
-  };
-
-  const handleBack = () => {
-    if (step > 1) {
-      setStep(step - 1);
-      setErrors({});
-    }
-  };
-
-  const handleSubmit = () => {
-    const playerData: Player = {
-      id: `player_${Date.now()}`,
-      name: formData.name,
-      age: parseInt(formData.age),
-      monthly_allowance: parseInt(formData.monthly_allowance),
-      level: 1,
-      xp_points: 0,
-      total_xp_earned: 0,
-      theme_preference: 'light',
-      joined_date: new Date().toISOString().split('T')[0],
+  const finish = () => {
+    updatePlayer({
+      id: uid('player'),
+      name: name.trim(),
+      age: Number(age),
+      monthly_allowance: Number(allowance),
       isOnboarded: true,
-    };
-
-    // Store in localStorage
-    localStorage.setItem('finwise_player', JSON.stringify(playerData));
-    
-    // Redirect to dashboard
-    router.push('/dashboard');
+      joined_date: getTodayDate(),
+      total_xp_earned: 100,
+    });
+    router.replace('/dashboard');
   };
 
-  const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-    if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: '' }));
-    }
+  const next = () => {
+    if (!canAdvance) return;
+    if (step === STEPS.length - 1) finish();
+    else setStep(step + 1);
   };
+
+  const dailyBudget = Number(allowance) > 0 ? Number(allowance) / 30 : 0;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center p-4">
-      <div className="max-w-2xl w-full">
-        {/* Welcome Card */}
-        <div className="bg-white dark:bg-gray-800 rounded-3xl shadow-2xl p-8 md:p-12">
-          {/* Logo and Title */}
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-2xl mb-4">
-              <span className="text-4xl text-white font-bold">₹</span>
-            </div>
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">
-              Welcome to FinWise
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400">
-              Your journey to financial mastery begins here!
-            </p>
-          </div>
+    <main className="relative flex min-h-screen flex-col">
+      <header className="glass-bar relative flex h-14 items-center justify-between border-b px-5 sm:px-8">
+        <div className="flex items-center gap-2.5">
+          <span
+            className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent text-[13px] font-bold text-white"
+            style={{ boxShadow: '0 2px 12px rgb(var(--accent) / 0.4)' }}
+          >
+            ₹
+          </span>
+          <span className="text-[15px] font-semibold tracking-tight text-ink">Smartwise</span>
+        </div>
+        <ThemeToggle />
+      </header>
 
-          {/* Progress Indicator */}
-          <div className="flex items-center justify-center mb-8">
-            {[1, 2, 3].map((i) => (
-              <React.Fragment key={i}>
-                <div className={`flex items-center justify-center w-10 h-10 rounded-full font-semibold transition-all ${
-                  i <= step 
-                    ? 'bg-gradient-to-r from-sky-400 via-blue-400 to-violet-400 text-white' 
-                    : 'bg-gray-200 dark:bg-gray-700 text-gray-400'
-                }`}>
-                  {i < step ? '✓' : i}
-                </div>
-                {i < 3 && (
-                  <div className={`w-16 h-1 mx-2 rounded ${
-                    i < step ? 'bg-gradient-to-r from-sky-400 via-blue-400 to-violet-400' : 'bg-gray-200 dark:bg-gray-700'
-                  }`} />
+      <div className="relative flex flex-1 items-center justify-center px-5 pb-16">
+        <div className="glass-strong w-full max-w-md rounded-2xl p-6 sm:p-8">
+          {/* Progress */}
+          <div className="mb-8 flex gap-1.5">
+            {STEPS.map((_, index) => (
+              <div
+                key={index}
+                className={cn(
+                  'h-0.5 flex-1 rounded-full transition-colors duration-300',
+                  index <= step ? 'bg-accent' : 'bg-line'
                 )}
-              </React.Fragment>
+              />
             ))}
           </div>
 
-          {/* Step Content */}
-          <div className="mb-8">
+          <div key={step} className="animate-fade-up space-y-6">
+            <div className="space-y-1.5">
+              <p className="eyebrow">
+                Step {step + 1} of {STEPS.length}
+              </p>
+              <h1 className="text-2xl font-semibold tracking-tight text-ink">
+                {STEPS[step].title}
+              </h1>
+              <p className="text-sm text-muted">{STEPS[step].hint}</p>
+            </div>
+
+            {step === 0 && (
+              <Input
+                large
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && next()}
+                placeholder="Your first name"
+                autoFocus
+                maxLength={24}
+              />
+            )}
+
             {step === 1 && (
-              <div className="space-y-6">
-                <div className="text-center">
-                  <div className="text-6xl mb-4">👋</div>
-                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-                    What's your name?
-                  </h2>
-                  <p className="text-gray-600 dark:text-gray-400">
-                    Let's personalize your experience
-                  </p>
-                </div>
-                <div>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => handleInputChange('name', e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleNext()}
-                    placeholder="Enter your name"
-                    className={`w-full px-6 py-4 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-xl text-lg focus:outline-none focus:ring-2 transition-all ${
-                      errors.name ? 'ring-2 ring-red-500' : 'focus:ring-sky-500'
-                    }`}
-                    autoFocus
-                  />
-                  {errors.name && (
-                    <p className="mt-2 text-sm text-red-600">{errors.name}</p>
-                  )}
+              <div className="space-y-3">
+                <Input
+                  large
+                  type="number"
+                  value={age}
+                  onChange={(e) => setAge(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && next()}
+                  placeholder="20"
+                  autoFocus
+                  className="tabnum"
+                />
+                <div className="flex gap-1.5">
+                  {[18, 20, 22, 25].map((preset) => (
+                    <button
+                      key={preset}
+                      onClick={() => setAge(String(preset))}
+                      className={cn('chip', Number(age) === preset && 'chip-accent')}
+                    >
+                      {preset}
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
 
             {step === 2 && (
-              <div className="space-y-6">
-                <div className="text-center">
-                  <div className="text-6xl mb-4">🎂</div>
-                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-                    How old are you?
-                  </h2>
-                  <p className="text-gray-600 dark:text-gray-400">
-                    We'll customize tasks based on your age
-                  </p>
+              <div className="space-y-3">
+                <MoneyInput
+                  large
+                  value={allowance}
+                  onChange={(e) => setAllowance(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && next()}
+                  placeholder="10000"
+                  autoFocus
+                />
+                <div className="flex flex-wrap gap-1.5">
+                  {ALLOWANCE_PRESETS.map((preset) => (
+                    <button
+                      key={preset}
+                      onClick={() => setAllowance(String(preset))}
+                      className={cn('chip', Number(allowance) === preset && 'chip-accent')}
+                    >
+                      {formatCurrency(preset, true)}
+                    </button>
+                  ))}
                 </div>
-                <div>
-                  <input
-                    type="number"
-                    value={formData.age}
-                    onChange={(e) => handleInputChange('age', e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && handleNext()}
-                    placeholder="Enter your age"
-                    className={`w-full px-6 py-4 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-xl text-lg focus:outline-none focus:ring-2 transition-all ${
-                      errors.age ? 'ring-2 ring-red-500' : 'focus:ring-sky-500'
-                    }`}
-                    autoFocus
-                  />
-                  {errors.age && (
-                    <p className="mt-2 text-sm text-red-600">{errors.age}</p>
-                  )}
-                </div>
-              </div>
-            )}
 
-            {step === 3 && (
-              <div className="space-y-6">
-                <div className="text-center">
-                  <div className="text-6xl mb-4">💰</div>
-                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-                    What's your monthly allowance?
-                  </h2>
-                  <p className="text-gray-600 dark:text-gray-400">
-                    This helps us create personalized financial goals
-                  </p>
-                </div>
-                <div>
-                  <div className="relative">
-                    <span className="absolute left-6 top-1/2 -translate-y-1/2 text-xl text-gray-500">
-                      ₹
-                    </span>
-                    <input
-                      type="number"
-                      value={formData.monthly_allowance}
-                      onChange={(e) => handleInputChange('monthly_allowance', e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && handleNext()}
-                      placeholder="Enter amount"
-                      className={`w-full pl-12 pr-6 py-4 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-xl text-lg focus:outline-none focus:ring-2 transition-all ${
-                        errors.monthly_allowance ? 'ring-2 ring-red-500' : 'focus:ring-sky-500'
-                      }`}
-                      autoFocus
-                    />
+                {dailyBudget > 0 && (
+                  <div className="panel-quiet animate-fade-up space-y-2 p-3.5">
+                    <p className="eyebrow">What that means</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-xs text-muted">Safe daily spend</p>
+                        <p className="text-base font-semibold tabnum text-ink">
+                          {formatCurrency(dailyBudget)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted">20% savings target</p>
+                        <p className="text-base font-semibold tabnum text-positive">
+                          {formatCurrency(Number(allowance) * 0.2)}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="text-2xs leading-relaxed text-faint">
+                      You can change this any time in settings. It drives your daily budget,
+                      Smartwise Score, and the tasks Smartwise generates for you.
+                    </p>
                   </div>
-                  {errors.monthly_allowance && (
-                    <p className="mt-2 text-sm text-red-600">{errors.monthly_allowance}</p>
-                  )}
-                  <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
-                    💡 Tip: Include all sources of income (salary, pocket money, etc.)
-                  </p>
-                </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex items-center gap-2">
+              {step > 0 && (
+                <Button
+                  variant="ghost"
+                  size="lg"
+                  onClick={() => setStep(step - 1)}
+                  icon={<ArrowLeft className="h-4 w-4" />}
+                >
+                  Back
+                </Button>
+              )}
+              <Button
+                variant="primary"
+                size="lg"
+                onClick={next}
+                disabled={!canAdvance}
+                iconRight={
+                  step === STEPS.length - 1 ? (
+                    <Check className="h-4 w-4" />
+                  ) : (
+                    <ArrowRight className="h-4 w-4" />
+                  )
+                }
+                className="flex-1"
+              >
+                {step === STEPS.length - 1 ? 'Start tracking' : 'Continue'}
+              </Button>
+            </div>
+
+            {/* Recap of answers already given */}
+            {step > 0 && (
+              <div className="flex flex-wrap gap-1.5 border-t border-line pt-4">
+                {STEPS.slice(0, step).map((s, index) => (
+                  <button
+                    key={s.key}
+                    onClick={() => setStep(index)}
+                    className="chip transition-colors hover:border-accent/40 hover:text-accent"
+                  >
+                    <Check className="h-2.5 w-2.5 text-positive" />
+                    {s.key === 'allowance' ? formatCurrency(Number(values[index])) : values[index]}
+                  </button>
+                ))}
               </div>
             )}
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex gap-4">
-            {step > 1 && (
-              <button
-                onClick={handleBack}
-                className="flex-1 px-6 py-4 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl font-semibold hover:bg-gray-300 dark:hover:bg-gray-600 transition-all"
-              >
-                Back
-              </button>
-            )}
-            <button
-              onClick={handleNext}
-              className="flex-1 px-6 py-4 bg-gradient-to-r from-sky-400 via-blue-400 to-violet-400 text-white rounded-xl font-semibold hover:from-indigo-700 hover:to-purple-700 transition-all shadow-lg shadow-indigo-500/30"
-            >
-              {step === 3 ? 'Start My Journey 🚀' : 'Continue'}
-            </button>
-          </div>
-        </div>
-
-        {/* Features Preview */}
-        <div className="mt-8 grid grid-cols-3 gap-4 text-white text-center">
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
-            <div className="text-3xl mb-2">🎮</div>
-            <p className="text-sm font-semibold">100 Levels</p>
-          </div>
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
-            <div className="text-3xl mb-2">🤖</div>
-            <p className="text-sm font-semibold">AI Mentor</p>
-          </div>
-          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-4">
-            <div className="text-3xl mb-2">📈</div>
-            <p className="text-sm font-semibold">Track Progress</p>
-          </div>
+          {step === 0 && (
+            <div className="mt-10 flex items-start gap-2.5 panel-quiet p-3.5">
+              <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
+              <p className="text-xs leading-relaxed text-muted">
+                Everything stays in this browser. No account, no bank login, no data leaving your
+                device — the only thing sent anywhere is a chat message when you ask the AI coach a
+                question.
+              </p>
+            </div>
+          )}
         </div>
       </div>
-    </div>
+    </main>
   );
 }

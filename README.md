@@ -1,8 +1,8 @@
-# 🪙 FinWise – Gamified Financial Mentor
+# 🪙 Smartwise – Gamified Financial Mentor
 > **Turning financial anxiety into a game you can win.**  
 > Learn, save, and level up your money skills — one XP at a time.
 
-**FinWise** is a **Next.js 14** web app that helps students and first-time earners build financial discipline through **AI mentorship**, **gamified savings**, and **real expense tracking**.  
+**Smartwise** is a **Next.js 14** web app that helps students and first-time earners build financial discipline through **AI mentorship**, **gamified savings**, and **real expense tracking**.  
 Inspired by the *Solo Leveling System*, every healthy money habit earns XP and unlocks new levels — making finance *fun, rewarding, and habit-forming*.
 
 ---
@@ -26,9 +26,9 @@ Inspired by the *Solo Leveling System*, every healthy money habit earns XP and u
 ---
 
 ## 💡 Overview
-> 70 % of first-time earners struggle to manage money — FinWise turns financial learning into an experience that feels like leveling up in a game.
+> 70 % of first-time earners struggle to manage money — Smartwise turns financial learning into an experience that feels like leveling up in a game.
 
-FinWise combines **AI guidance**, **automation**, and **gamification** to help users form lasting financial habits.  
+Smartwise combines **AI guidance**, **automation**, and **gamification** to help users form lasting financial habits.  
 It teaches finance through *action, not theory.*
 
 ---
@@ -132,7 +132,7 @@ When one person spends, the expense splits evenly among members.
 ## 🛒 Smart Price Tracker *(NEW)*
 Never overpay again.  
 - Paste any **Amazon link** and set a **target price**  
-- FinWise tracks the product price in real time  
+- Smartwise tracks the product price in real time  
 - When the price hits target, users get:
   - In-app pop-up notification  
   - Optional WhatsApp/email alert  
@@ -151,7 +151,7 @@ Never overpay again.
 ## 🌍 Impact & Vision
 > “We don’t just track money — we teach people how to master it.”
 
-FinWise promotes **financial inclusion and literacy** through gamification and AI.  
+Smartwise promotes **financial inclusion and literacy** through gamification and AI.  
 Its mission: help the next generation become financially confident and disciplined.
 
 ---
@@ -178,7 +178,7 @@ Its mission: help the next generation become financially confident and disciplin
 ---
 
 ## 🏁 Summary
-FinWise is **not just a finance tracker — it’s a behavioral mentor.**  
+Smartwise is **not just a finance tracker — it’s a behavioral mentor.**  
 It transforms money management into an **interactive journey** powered by **AI, education, and automation**.  
 **Built for young earners. Designed for real impact.**
 

@@ -1,214 +1,157 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Task } from '@/types';
-import { generateTasksForAllowance } from '@/lib/mockData';
+import React, { useRef, useState } from 'react';
+import { Check, RefreshCw, Skull, Sparkles, Target, Zap } from 'lucide-react';
+import { Panel, PanelBody, PanelHeader } from '@/components/ui/Panel';
+import { IconButton } from '@/components/ui/Button';
+import { ProgressBar } from '@/components/ui/Charts';
+import { XPFloat } from '@/components/ToastHost';
+import { useApp } from '@/contexts/AppContext';
+import { burstAt } from '@/lib/celebrate';
+import type { Task, TaskDifficulty } from '@/types';
+import { cn } from '@/lib/utils';
 
-interface TaskPanelProps {
-  monthlyAllowance: number;
-  onTaskComplete: (taskId: string, xpEarned: number) => void;
-}
+const DIFFICULTY: Record<TaskDifficulty, { label: string; chip: string }> = {
+  easy: { label: 'Easy', chip: 'chip' },
+  medium: { label: 'Medium', chip: 'chip chip-warning' },
+  hard: { label: 'Hard', chip: 'chip chip-negative' },
+  boss: { label: 'Boss', chip: 'chip chip-accent' },
+};
 
-export default function TaskPanel({ monthlyAllowance, onTaskComplete }: TaskPanelProps) {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [completedTasks, setCompletedTasks] = useState<Set<string>>(new Set());
+const TaskRow: React.FC<{ task: Task; onToggle: (el: HTMLElement | null) => void }> = ({
+  task,
+  onToggle,
+}) => {
+  const anchorRef = useRef<HTMLButtonElement>(null);
+  const [float, setFloat] = useState(false);
 
-  useEffect(() => {
-    // Generate tasks based on allowance
-    const generatedTasks = generateTasksForAllowance(monthlyAllowance);
-    setTasks(generatedTasks);
-
-    // Load completed tasks from localStorage
-    const savedCompleted = localStorage.getItem('finwise_completed_tasks');
-    if (savedCompleted) {
-      try {
-        const completed = JSON.parse(savedCompleted);
-        const today = new Date().toISOString().split('T')[0];
-        
-        // Only load today's completed tasks
-        if (completed.date === today) {
-          setCompletedTasks(new Set(completed.taskIds));
-        } else {
-          // Reset for new day
-          localStorage.removeItem('finwise_completed_tasks');
-        }
-      } catch (error) {
-        console.error('Error loading completed tasks:', error);
-      }
+  const handleClick = () => {
+    if (!task.completed) {
+      void burstAt(anchorRef.current);
+      setFloat(true);
+      setTimeout(() => setFloat(false), 1700);
     }
-  }, [monthlyAllowance]);
-
-  const handleTaskToggle = (task: Task) => {
-    const newCompleted = new Set(completedTasks);
-    
-    if (completedTasks.has(task.id)) {
-      // Uncomplete task
-      newCompleted.delete(task.id);
-      onTaskComplete(task.id, -task.xp_reward); // Subtract XP
-    } else {
-      // Complete task
-      newCompleted.add(task.id);
-      onTaskComplete(task.id, task.xp_reward); // Add XP
-    }
-    
-    setCompletedTasks(newCompleted);
-    
-    // Save to localStorage
-    const today = new Date().toISOString().split('T')[0];
-    localStorage.setItem('finwise_completed_tasks', JSON.stringify({
-      date: today,
-      taskIds: Array.from(newCompleted)
-    }));
+    onToggle(anchorRef.current);
   };
 
-  const completedCount = completedTasks.size;
-  const totalXP = completedCount * 50;
-  const progress = (completedCount / tasks.length) * 100;
-
   return (
-    <div className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-700/30 dark:to-gray-700/50 rounded-2xl p-4 md:p-6 shadow-card hover:shadow-xl transition-all duration-300 hover:scale-[1.02] border border-gray-200 dark:border-gray-700">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4 md:mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Daily Tasks</h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-            Complete tasks to earn XP and level up!
-          </p>
-        </div>
-        <div className="text-center bg-gradient-to-r from-sky-400 via-blue-400 to-violet-400 text-white px-4 py-2 rounded-xl">
-          <div className="text-2xl font-bold">{totalXP}</div>
-          <div className="text-xs">XP Today</div>
-        </div>
-      </div>
-
-      {/* Progress Bar */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            Progress
-          </span>
-          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            {completedCount}/{tasks.length} tasks
-          </span>
-        </div>
-        <div className="w-full h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-gradient-to-r from-sky-400 via-blue-400 to-violet-400 transition-all duration-500 ease-out"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-      </div>
-
-      {/* Task List */}
-      <div className="space-y-3">
-        {tasks.map((task) => {
-          const isCompleted = completedTasks.has(task.id);
-          
-          return (
-            <div
-              key={task.id}
-              className={`group relative p-4 rounded-xl border-2 transition-all cursor-pointer hover:shadow-md ${
-                isCompleted
-                  ? 'bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-green-500'
-                  : 'bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-700/30 dark:to-gray-700/50 border-gray-200 dark:border-gray-700 hover:border-sky-500'
-              }`}
-              onClick={() => handleTaskToggle(task)}
-            >
-              <div className="flex items-start gap-4">
-                {/* Checkbox */}
-                <div className="flex-shrink-0 mt-1">
-                  <div
-                    className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
-                      isCompleted
-                        ? 'bg-green-500 border-green-500'
-                        : 'border-gray-300 dark:border-gray-600 group-hover:border-sky-500'
-                    }`}
-                  >
-                    {isCompleted && (
-                      <svg
-                        className="w-4 h-4 text-white"
-                        fill="none"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                      >
-                        <path d="M5 13l4 4L19 7" />
-                      </svg>
-                    )}
-                  </div>
-                </div>
-
-                {/* Task Content */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <h3
-                        className={`font-semibold text-gray-900 dark:text-white ${
-                          isCompleted ? 'line-through opacity-70' : ''
-                        }`}
-                      >
-                        {task.title}
-                      </h3>
-                      <p
-                        className={`text-sm mt-1 text-gray-600 dark:text-gray-400 ${
-                          isCompleted ? 'line-through opacity-70' : ''
-                        }`}
-                      >
-                        {task.description}
-                      </p>
-                    </div>
-                    <div className="flex-shrink-0 flex flex-col items-end gap-1">
-                      <div className="flex items-center gap-1 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-500 px-2 py-1 rounded-lg text-xs font-bold">
-                        <span>⭐</span>
-                        <span>+{task.xp_reward} XP</span>
-                      </div>
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded-full ${
-                          task.difficulty === 'easy'
-                            ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-500'
-                            : task.difficulty === 'medium'
-                            ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-500'
-                            : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-500'
-                        }`}
-                      >
-                        {task.difficulty}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Category */}
-                  {task.category && (
-                    <div className="mt-2 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                      <span className="px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded">
-                        {task.category}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Completion Message */}
-      {completedCount === tasks.length && tasks.length > 0 && (
-        <div className="mt-6 p-4 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl border-2 border-green-500">
-          <div className="flex items-center gap-3">
-            <div className="text-4xl">🎉</div>
-            <div>
-              <h4 className="font-bold text-green-700 dark:text-green-500">
-                All Tasks Complete!
-              </h4>
-              <p className="text-sm text-green-600 dark:text-green-400">
-                Amazing work! You've earned {totalXP} XP today. Come back tomorrow for new challenges!
-              </p>
-            </div>
-          </div>
-        </div>
+    <div
+      className={cn(
+        'group flex items-start gap-3 px-4 py-3 transition-colors hover:bg-surface',
+        task.completed && 'opacity-55'
       )}
+    >
+      <button
+        ref={anchorRef}
+        onClick={handleClick}
+        aria-label={task.completed ? 'Mark incomplete' : 'Mark complete'}
+        className={cn(
+          'relative mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[5px] border transition-all duration-150',
+          task.completed
+            ? 'border-accent bg-accent text-white'
+            : 'border-line-strong hover:border-accent'
+        )}
+      >
+        {task.completed && <Check className="h-3 w-3" strokeWidth={3} />}
+        {float && <XPFloat amount={task.xp_reward} />}
+      </button>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-2">
+          <p
+            className={cn(
+              'text-sm font-medium leading-snug text-ink',
+              task.completed && 'line-through decoration-faint'
+            )}
+          >
+            {task.title}
+          </p>
+          <span className="shrink-0 text-2xs font-semibold tabnum text-accent">
+            +{task.xp_reward}
+          </span>
+        </div>
+        <p className="mt-0.5 text-xs leading-relaxed text-muted">{task.description}</p>
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <span className={DIFFICULTY[task.difficulty].chip}>
+            {DIFFICULTY[task.difficulty].label}
+          </span>
+          <span className="chip capitalize">{task.category}</span>
+          {task.personalized && (
+            <span className="chip chip-accent">
+              <Sparkles className="h-2.5 w-2.5" />
+              From your data
+            </span>
+          )}
+        </div>
+      </div>
     </div>
   );
-}
+};
+
+/**
+ * Daily tasks, regenerated from the user's own numbers each day, plus one 500 XP
+ * boss challenge that is always the hardest thing on the list.
+ */
+export const TaskPanel: React.FC = () => {
+  const { tasks, toggleTask, regenerateTasks, multiplier } = useApp();
+
+  const regular = tasks.filter((t) => t.difficulty !== 'boss');
+  const boss = tasks.find((t) => t.difficulty === 'boss');
+
+  const done = regular.filter((t) => t.completed).length;
+  const earned = tasks.filter((t) => t.completed).reduce((acc, t) => acc + t.xp_reward, 0);
+  const available = tasks.reduce((acc, t) => acc + t.xp_reward, 0);
+
+  return (
+    <Panel>
+      <PanelHeader
+        title="Today's missions"
+        subtitle={`${done} of ${regular.length} done · ${earned}/${available} XP`}
+        icon={<Target className="h-3.5 w-3.5" />}
+        action={
+          <>
+            {multiplier > 1 && (
+              <span className="chip chip-accent">
+                <Zap className="h-3 w-3" />
+                {multiplier}×
+              </span>
+            )}
+            <IconButton label="Regenerate tasks from latest data" onClick={regenerateTasks}>
+              <RefreshCw className="h-3.5 w-3.5" />
+            </IconButton>
+          </>
+        }
+      />
+
+      <PanelBody className="pb-3">
+        <ProgressBar
+          value={done}
+          max={Math.max(1, regular.length)}
+          height={4}
+          barClassName={done === regular.length ? 'bg-positive' : 'bg-accent'}
+        />
+      </PanelBody>
+
+      <div className="divide-y divide-line border-t border-line">
+        {regular.map((task) => (
+          <TaskRow key={task.id} task={task} onToggle={(el) => toggleTask(task.id, el)} />
+        ))}
+      </div>
+
+      {boss && (
+        <div
+          className={cn(
+            'border-t-2 border-accent/30 bg-accent/[0.04]',
+            boss.completed && 'bg-positive/[0.05]'
+          )}
+        >
+          <div className="flex items-center gap-2 px-4 pt-3">
+            <Skull className={cn('h-3.5 w-3.5', boss.completed ? 'text-positive' : 'text-accent')} />
+            <p className="eyebrow text-accent">Boss challenge · 500 XP</p>
+          </div>
+          <TaskRow task={boss} onToggle={(el) => toggleTask(boss.id, el)} />
+        </div>
+      )}
+    </Panel>
+  );
+};
