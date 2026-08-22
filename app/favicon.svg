@@ -1,0 +1,18 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background Circle -->
+  <circle cx="32" cy="32" r="32" fill="#B4C9BA"/>
+  
+  <!-- Inner Circle -->
+  <circle cx="32" cy="32" r="24" fill="#D4B5B0"/>
+  
+  <!-- Rupee Symbol -->
+  <path d="M24 20 L40 20 M24 24 L40 24 M24 20 L24 32 C24 36 28 40 32 40 L40 48" 
+        stroke="#FAF7F0" 
+        stroke-width="3" 
+        stroke-linecap="round" 
+        stroke-linejoin="round"
+        fill="none"/>
+  
+  <!-- Small accent dot -->
+  <circle cx="38" cy="22" r="2" fill="#F5D0B0"/>
+</svg>
